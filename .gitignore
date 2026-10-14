@@ -13,6 +13,7 @@ build/
 venv/
 env/
 JEnv/
+.python312/
 .pip-cache/
 .tmp/
 .cache/
@@ -29,7 +30,6 @@ data/
 .env
 .env.*
 !.env.example
-.env.example
 
 # Secrets and local credentials
 *.pem
@@ -63,6 +63,7 @@ htmlcov/
 # Local exports and scratch files
 *.zip
 New Text Document.txt
+kokoro-tts/
 *.bak
 *.tmp
 *.orig

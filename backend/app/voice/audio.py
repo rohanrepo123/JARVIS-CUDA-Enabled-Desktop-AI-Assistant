@@ -135,12 +135,13 @@ class AudioPlayer:
             self._initialized = True
             logger.info("Audio player initialized (pygame mixer)")
 
-    def play_bytes(self, audio_bytes: bytes, block: bool = True) -> None:
+    def play_bytes(self, audio_bytes: bytes, block: bool = True, filetype: str = "mp3") -> None:
         """Play raw audio bytes (MP3 format from ElevenLabs).
 
         Args:
-            audio_bytes: MP3 audio data.
+            audio_bytes: Encoded audio data.
             block: If True, wait for playback to finish before returning.
+            filetype: Audio format hint passed to pygame.
         """
         if not audio_bytes:
             logger.warning("Empty audio data, nothing to play")
@@ -151,7 +152,7 @@ class AudioPlayer:
 
         logger.info("Playing audio: %d bytes", len(audio_bytes))
         audio_stream = io.BytesIO(audio_bytes)
-        pygame.mixer.music.load(audio_stream, "mp3")
+        pygame.mixer.music.load(audio_stream, filetype)
         pygame.mixer.music.play()
 
         if block:

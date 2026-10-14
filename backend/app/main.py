@@ -23,7 +23,7 @@ def create_app(config: JarvisConfig | None = None) -> FastAPI:
         from backend.app.agent.graph import build_jarvis_graph
         from backend.app.voice.pipeline import VoicePipeline
         from backend.app.voice.stt import WhisperSTT
-        from backend.app.voice.tts import ElevenLabsTTS
+        from backend.app.voice.tts import create_tts_provider
         from backend.app.voice.audio import AudioRecorder, AudioPlayer
 
         # Build the LangGraph agent brain
@@ -33,20 +33,22 @@ def create_app(config: JarvisConfig | None = None) -> FastAPI:
             base_url=config.ollama_url,
         )
 
-        # Initialize voice components (if configured)
-        stt = None
+        # Keep local speech input available independently from the TTS provider.
+        stt = WhisperSTT(
+            model_size=config.whisper_model_size,
+            device=config.whisper_device,
+            compute_type=config.whisper_compute_type,
+        )
         tts = None
-        if config.voice_enabled:
-            logger.info("Initializing voice pipeline...")
-            stt = WhisperSTT(
-                model_size=config.whisper_model_size,
-                device=config.whisper_device,
-                compute_type=config.whisper_compute_type,
-            )
-            tts = ElevenLabsTTS(
+        try:
+            tts = create_tts_provider(
+                config.tts_provider,
                 api_key=config.elevenlabs_api_key,
                 voice_id=config.elevenlabs_voice_id,
             )
+            logger.info("TTS provider initialized: %s", config.tts_provider)
+        except ValueError as exc:
+            logger.warning("TTS provider unavailable: %s", exc)
 
         pipeline = VoicePipeline(
             graph=graph,

@@ -36,6 +36,7 @@ def create_ollama_llm(
         temperature=temperature,
         num_ctx=num_ctx,
         num_predict=num_predict,
+        streaming=True,
         # Keep-alive prevents model unloading between turns
         keep_alive="10m",
         **kwargs,

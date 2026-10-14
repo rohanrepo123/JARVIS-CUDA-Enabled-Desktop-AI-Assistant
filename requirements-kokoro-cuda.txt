@@ -1,0 +1,7 @@
+# Kokoro local TTS uses PyTorch's CUDA 13.0 runtime on supported NVIDIA GPUs.
+--index-url https://download.pytorch.org/whl/cu130
+--extra-index-url https://pypi.org/simple
+
+torch==2.14.1+cu130
+kokoro==0.9.4
+soundfile==0.14.0

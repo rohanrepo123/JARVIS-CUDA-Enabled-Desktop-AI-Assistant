@@ -76,7 +76,12 @@ def create_router() -> APIRouter:
 
         # Determine effective mode
         effective_mode = body.mode or config.mode
-        should_speak = body.speak and pipeline.voice_available and effective_mode == "voice"
+        should_speak = (
+            body.speak
+            and pipeline.voice_available
+            and pipeline.tts is not None
+            and effective_mode == "voice"
+        )
 
         try:
             response_text = pipeline.process_text(
@@ -104,12 +109,16 @@ def create_router() -> APIRouter:
         if not pipeline.voice_available:
             raise HTTPException(
                 status_code=503,
-                detail="Voice mode unavailable. Configure ELEVENLABS_API_KEY in .env",
+                detail="Voice input is unavailable. Check the local Whisper configuration.",
             )
 
         try:
             response_text = pipeline.process_voice(record_seconds=5.0)
-            return ChatResponse(response=response_text, mode="voice", spoken=True)
+            return ChatResponse(
+                response=response_text,
+                mode="voice",
+                spoken=pipeline.tts is not None,
+            )
         except Exception as exc:
             logger.exception("Voice processing failed")
             raise HTTPException(status_code=500, detail=f"Voice processing failed: {exc}") from exc
@@ -123,7 +132,7 @@ def create_router() -> APIRouter:
         if body.mode == "voice" and not pipeline.voice_available:
             raise HTTPException(
                 status_code=400,
-                detail="Cannot switch to voice mode: ElevenLabs API key not configured.",
+                detail="Cannot switch to voice mode: local speech recognition is unavailable.",
             )
 
         # Update the config mode (mutable override via app state)

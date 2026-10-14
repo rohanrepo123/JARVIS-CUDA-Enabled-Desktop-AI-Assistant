@@ -20,6 +20,7 @@ class JarvisConfig:
     ollama_model: str = "llama3.2"
 
     # ── ElevenLabs (Text-to-Speech) ──────────────────────────────────
+    tts_provider: str = "kokoro"
     elevenlabs_api_key: str = field(default="", repr=False)
     elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
 
@@ -52,6 +53,7 @@ class JarvisConfig:
         return cls(
             ollama_url=os.getenv("JARVIS_OLLAMA_URL", "http://127.0.0.1:11434"),
             ollama_model=os.getenv("JARVIS_OLLAMA_MODEL", "llama3.2"),
+            tts_provider=os.getenv("JARVIS_TTS_PROVIDER", "kokoro").strip().lower(),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"),
             whisper_model_size=os.getenv("WHISPER_MODEL_SIZE", "base"),
@@ -65,7 +67,7 @@ class JarvisConfig:
 
     @property
     def voice_enabled(self) -> bool:
-        """Check if voice mode can be activated (needs ElevenLabs API key)."""
+        """Check whether ElevenLabs credentials are configured."""
         return bool(self.elevenlabs_api_key and self.elevenlabs_api_key != "your_elevenlabs_api_key_here")
 
     def __str__(self) -> str:

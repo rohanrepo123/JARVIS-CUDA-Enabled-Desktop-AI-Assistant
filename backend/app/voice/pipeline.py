@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 from backend.app.agent.graph import build_jarvis_graph
 from backend.app.voice.audio import AudioPlayer, AudioRecorder
@@ -40,8 +40,8 @@ class VoicePipeline:
 
     @property
     def voice_available(self) -> bool:
-        """Check if voice components (STT + TTS) are available."""
-        return self.stt is not None and self.tts is not None
+        """Check whether local speech recognition is available."""
+        return self.stt is not None
 
     def process_text(self, text: str, mode: str = "text", speak: bool = False) -> str:
         """Process a text input through the agent and optionally speak the response.
@@ -80,6 +80,34 @@ class VoicePipeline:
             self._speak(response)
 
         return response
+
+    def process_text_stream(
+        self, text: str, on_chunk: Callable[[str], None], mode: str = "text"
+    ) -> str:
+        """Run a turn and report assistant text as Ollama generates it."""
+        if not text.strip():
+            return "I didn't catch anything. Could you try again?"
+
+        result: dict[str, Any] = {}
+        for stream_kind, payload in self.graph.stream(
+            {
+                "current_input": text,
+                "mode": mode,
+                "response": "",
+                "tool_results": [],
+            },
+            config=self._config,
+            stream_mode=["messages", "updates"],
+        ):
+            if stream_kind == "messages":
+                message, metadata = payload
+                if metadata.get("langgraph_node") == "agent":
+                    content = getattr(message, "content", "")
+                    if isinstance(content, str) and content:
+                        on_chunk(content)
+            elif stream_kind == "updates" and "respond" in payload:
+                result = payload["respond"]
+        return str(result.get("response", "I couldn't generate a response."))
 
     def process_voice(self, record_seconds: float = 5.0) -> str:
         """Full voice interaction: record -> transcribe -> think -> speak.
@@ -155,7 +183,11 @@ class VoicePipeline:
         try:
             audio_bytes = self.tts.synthesize(text)
             if audio_bytes:
-                self.player.play_bytes(audio_bytes, block=True)
+                self.player.play_bytes(
+                    audio_bytes,
+                    block=True,
+                    filetype=getattr(self.tts, "audio_format", "mp3"),
+                )
         except Exception as exc:
             logger.error("TTS/playback failed: %s", exc)
 

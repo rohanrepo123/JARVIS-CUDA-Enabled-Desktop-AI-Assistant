@@ -59,7 +59,7 @@ def create_pipeline(config):
     from backend.app.voice.audio import AudioPlayer, AudioRecorder
     from backend.app.voice.pipeline import VoicePipeline
     from backend.app.voice.stt import WhisperSTT
-    from backend.app.voice.tts import ElevenLabsTTS
+    from backend.app.voice.tts import create_tts_provider
 
     # Build the LangGraph agent
     console.print("  [cyan]►[/] Building agent brain (LangGraph + Ollama)...", end=" ")
@@ -69,27 +69,26 @@ def create_pipeline(config):
     )
     console.print("[green]✓[/]")
 
-    # Initialize voice components if API key is configured
-    stt = None
+    # Local speech recognition works without a cloud TTS credential.
+    console.print("  [cyan]►[/] Preparing local Whisper STT...", end=" ")
+    stt = WhisperSTT(
+        model_size=config.whisper_model_size,
+        device=config.whisper_device,
+        compute_type=config.whisper_compute_type,
+    )
+    console.print("[green]✓[/]")
+
     tts = None
-
-    if config.voice_enabled:
-        console.print("  [cyan]►[/] Loading Whisper STT model...", end=" ")
-        stt = WhisperSTT(
-            model_size=config.whisper_model_size,
-            device=config.whisper_device,
-            compute_type=config.whisper_compute_type,
-        )
-        console.print("[green]✓[/]")
-
-        console.print("  [cyan]►[/] Connecting to ElevenLabs TTS...", end=" ")
-        tts = ElevenLabsTTS(
+    try:
+        tts = create_tts_provider(
+            config.tts_provider,
             api_key=config.elevenlabs_api_key,
             voice_id=config.elevenlabs_voice_id,
         )
-        console.print("[green]✓[/]")
-    else:
-        console.print("  [yellow]⚠[/] Voice disabled (no ElevenLabs API key in .env)")
+        provider_name = "Kokoro (local)" if config.tts_provider == "kokoro" else "ElevenLabs"
+        console.print(f"  [cyan]►[/] Preparing {provider_name} TTS... [green]✓[/]")
+    except ValueError as exc:
+        console.print(f"  [yellow]•[/] Voice replies are off: {exc}")
 
     pipeline = VoicePipeline(
         graph=graph,

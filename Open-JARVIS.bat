@@ -13,13 +13,23 @@ if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 if not exist "%~dp0data" mkdir "%~dp0data"
 if not exist "%JARVIS_VENV%\Scripts\pythonw.exe" (
-  where py >nul 2>nul
-  if errorlevel 1 (
-    echo Python 3.11 or newer is required. Install Python and enable the launcher, then try again.
-    pause
-    exit /b 1
+  if exist "%~dp0.python312\python.exe" (
+    "%~dp0.python312\python.exe" -m venv "%JARVIS_VENV%"
+  ) else (
+    where py >nul 2>nul
+    if errorlevel 1 (
+      echo Python 3.12 is required. Install Python 3.12 and enable the Python launcher, then try again.
+      pause
+      exit /b 1
+    )
+    py -3.12 --version >nul 2>nul
+    if errorlevel 1 (
+      echo Python 3.12 is required. Install Python 3.12 and enable the Python launcher, then try again.
+      pause
+      exit /b 1
+    )
+    py -3.12 -m venv "%JARVIS_VENV%"
   )
-  py -3 -m venv "%JARVIS_VENV%"
   if errorlevel 1 goto setup_error
 )
 if not exist "%JARVIS_VENV%\.jarvis-ready" (
@@ -30,6 +40,11 @@ if not exist "%JARVIS_VENV%\.jarvis-ready" (
   "%JARVIS_VENV%\Scripts\python.exe" -m pip install -r requirements-cuda.txt
   if errorlevel 1 goto setup_error
   >"%JARVIS_VENV%\.jarvis-ready" echo ready
+)
+"%JARVIS_VENV%\Scripts\python.exe" -c "from importlib.metadata import version; assert version('kokoro') == '0.9.4' and version('soundfile') == '0.14.0' and version('torch') == '2.14.1+cu130'" >nul 2>nul
+if errorlevel 1 (
+  "%JARVIS_VENV%\Scripts\python.exe" -m pip install -r requirements-kokoro-cuda.txt
+  if errorlevel 1 goto setup_error
 )
 start "JARVIS" "%JARVIS_VENV%\Scripts\pythonw.exe" "%~dp0desktop_app.py"
 exit /b 0

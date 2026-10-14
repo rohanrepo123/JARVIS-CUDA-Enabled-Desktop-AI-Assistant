@@ -24,6 +24,7 @@ class ElevenLabsTTS:
         similarity_boost: float = 0.75,
         style: float = 0.0,
     ) -> None:
+        self.audio_format = "mp3"
         self.api_key = api_key
         self.voice_id = voice_id
         self.model_id = model_id
@@ -116,3 +117,70 @@ class ElevenLabsTTS:
             {"voice_id": v.voice_id, "name": v.name}
             for v in response.voices
         ]
+
+
+class KokoroTTS:
+    """Local Kokoro text-to-speech with optional CUDA inference."""
+
+    sample_rate = 24000
+    audio_format = "wav"
+
+    def __init__(
+        self,
+        device: str = "auto",
+        lang_code: str = "a",
+        voice: str = "af_heart",
+        speed: float = 1.0,
+    ) -> None:
+        self.device = device
+        self.lang_code = lang_code
+        self.voice = voice
+        self.speed = speed
+        self._pipeline: Any = None
+
+    def _ensure_pipeline(self) -> Any:
+        if self._pipeline is None:
+            from kokoro import KPipeline
+
+            device = None if self.device == "auto" else self.device
+            logger.info("Loading Kokoro TTS on %s", device or "automatic device")
+            self._pipeline = KPipeline(lang_code=self.lang_code, device=device)
+        return self._pipeline
+
+    def synthesize(self, text: str) -> bytes:
+        """Synthesize text to an in-memory 24 kHz PCM WAV file."""
+        if not text.strip():
+            return b""
+
+        import numpy as np
+        import soundfile as sf
+
+        pipeline = self._ensure_pipeline()
+        chunks = []
+        for _graphemes, _phonemes, audio in pipeline(text, voice=self.voice, speed=self.speed):
+            if audio is not None:
+                chunks.append(audio.detach().cpu().numpy())
+        if not chunks:
+            return b""
+
+        audio = np.concatenate(chunks).astype(np.float32, copy=False)
+        audio_buffer = io.BytesIO()
+        sf.write(audio_buffer, audio, self.sample_rate, format="WAV", subtype="PCM_16")
+        return audio_buffer.getvalue()
+
+
+def create_tts_provider(
+    provider: str,
+    *,
+    api_key: str = "",
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb",
+    kokoro_device: str = "auto",
+) -> ElevenLabsTTS | KokoroTTS:
+    """Create the selected TTS backend without loading local models yet."""
+    if provider == "kokoro":
+        return KokoroTTS(device=kokoro_device)
+    if provider == "elevenlabs":
+        if not api_key or api_key == "your_elevenlabs_api_key_here":
+            raise ValueError("Set ELEVENLABS_API_KEY in .env to use ElevenLabs.")
+        return ElevenLabsTTS(api_key=api_key, voice_id=voice_id)
+    raise ValueError("TTS provider must be 'kokoro' or 'elevenlabs'.")
