@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+.venv/
+.venv-partial/
+venv/
+env/
+JEnv/
+.pip-cache/
+.tmp/
+.cache/
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+!.env.example
+.env.example
+
+# Secrets and local credentials
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+token.json
+
+# Logs
+*.log
+jarvis.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Audio temp files
+*.wav
+*.mp3
+response_audio.*
+
+# Tests and local tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local exports and scratch files
+*.zip
+New Text Document.txt
+*.bak
+*.tmp
+*.orig
+
+# Database
+*.db
+*.sqlite3
+
+# Whisper model cache
+models/
