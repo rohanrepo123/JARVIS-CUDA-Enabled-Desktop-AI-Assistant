@@ -21,6 +21,7 @@ class JarvisConfig:
 
     # ── ElevenLabs (Text-to-Speech) ──────────────────────────────────
     tts_provider: str = "kokoro"
+    kokoro_voice: str = "am_michael"
     elevenlabs_api_key: str = field(default="", repr=False)
     elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
 
@@ -54,6 +55,7 @@ class JarvisConfig:
             ollama_url=os.getenv("JARVIS_OLLAMA_URL", "http://127.0.0.1:11434"),
             ollama_model=os.getenv("JARVIS_OLLAMA_MODEL", "llama3.2"),
             tts_provider=os.getenv("JARVIS_TTS_PROVIDER", "kokoro").strip().lower(),
+            kokoro_voice=os.getenv("KOKORO_VOICE", "am_michael").strip(),
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", ""),
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"),
             whisper_model_size=os.getenv("WHISPER_MODEL_SIZE", "base"),

@@ -45,6 +45,7 @@ def create_app(config: JarvisConfig | None = None) -> FastAPI:
                 config.tts_provider,
                 api_key=config.elevenlabs_api_key,
                 voice_id=config.elevenlabs_voice_id,
+                kokoro_voice=config.kokoro_voice,
             )
             logger.info("TTS provider initialized: %s", config.tts_provider)
         except ValueError as exc:

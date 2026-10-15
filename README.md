@@ -16,6 +16,9 @@ JARVIS is a personal AI assistant for Windows. It combines local voice transcrip
 - Live streaming text replies while Ollama generates them
 - Optional spoken replies for voice requests when ElevenLabs is configured
 - Selectable local Kokoro or cloud ElevenLabs speech output
+- Optional subtle robotic tone for Kokoro speech
+- Movie, celebrity, weather, and web-search tools
+- Concise spoken summaries with useful details shown separately in chat
 - Settings panel for voice replies and current model information
 
 ## How it works
@@ -47,7 +50,23 @@ On the first launch, the script creates a private Python 3.12 environment in `..
 
 The launcher stores Hugging Face models, pip downloads, temporary files, and the JARVIS database inside the project folder. This prevents them from filling your C: drive when the project is on D:.
 
-In **Settings**, choose **Kokoro · local CUDA** for on-device speech or **ElevenLabs · cloud** for online speech. Kokoro uses the CUDA 13.0 PyTorch wheel and downloads its model and voice assets on first use. ElevenLabs requires `ELEVENLABS_API_KEY` in `.env`.
+In **Settings**, choose **Kokoro · local CUDA** for on-device speech or **ElevenLabs · cloud** for online speech. Kokoro defaults to the built-in `am_michael` American English male voice at speed `1.0`; set `KOKORO_VOICE` in `.env` if you use another supported voice. The optional robotic tone is off by default. ElevenLabs requires `ELEVENLABS_API_KEY` in `.env`.
+
+Optional tools use `TMDB_API_KEY` for movie and celebrity lookups and `WEATHERSTACK_API_KEY` for current weather. Add your keys to `.env`; JARVIS gives a setup message when a tool is not configured. The calculator and DuckDuckGo search use existing local tools and do not need API keys.
+
+Every answer uses a concise summary first. JARVIS streams that summary in text mode and speaks it in voice mode. For larger results, it can set `is_detail_insight_needed` to `true` and stream or show only the additional on-screen details that are useful; simple answers keep the flag `false` and finish in one response. Voice details are shown in chat after the spoken summary has played.
+
+Step 3 productivity features use the local SQLite database configured by `JARVIS_DATABASE_PATH` (or the Windows JARVIS app-data default). Reminders and JARVIS alarms persist across restarts and are delivered while the desktop app is running; overdue items are surfaced the next time it opens. Use `Memory` in the app to review/cancel reminders and alarms, search and delete notes, manage saved preferences, or clear saved notes and preferences. Clearing saved memory asks for confirmation and leaves reminders intact.
+
+You can ask JARVIS to set one-time, daily, or weekly reminders and JARVIS alarms; save/search notes; remember/retrieve preferences; and start, pause, reset, or check its stopwatch. JARVIS alarms and stopwatch data are stored locally in its SQLite database. `open_windows_clock` opens the Windows Clock app so you can manage native Windows alarms there; JARVIS does not create entries inside the Clock app. Desktop app launching is limited to Notepad, Calculator, File Explorer, and Clock; opening a path refuses executable and script files. Arbitrary file deletion and system-setting tools are not enabled.
+
+Voice controls are available in **Settings**:
+
+- **Speech engine:** Kokoro or ElevenLabs.
+- **Add a subtle robotic tone:** leave this off for natural Kokoro speech.
+- **Speak replies to voice messages:** controls whether voice turns are read aloud.
+
+Voice replies speak the summary only. When the response schema marks supporting details as useful, JARVIS displays them in chat after playback.
 
 ## GPU voice setup
 
@@ -96,7 +115,7 @@ Jarvis_Desktop/
 
 - [x] **Step 1 — Desktop foundation:** local chat, Ollama integration, CUDA Whisper, and a one-click Windows launcher.
 - [x] **Step 2 — Voice-first interaction:** hold-to-talk recording, visible listening/transcribing/thinking states, voice transcripts in chat, streamed answers, and optional spoken replies.
-- [ ] **Step 3 — Personal automation:** calendar, reminders, notes, and desktop actions.
+- [x] **Step 3 — Personal automation:** persistent reminders and alarms, searchable notes, saved preferences, stopwatch controls, and safe Windows app/file opening.
 - [ ] **Step 4 — JARVIS experience:** richer UI, settings, and persistent personal context.
 
 ## Security

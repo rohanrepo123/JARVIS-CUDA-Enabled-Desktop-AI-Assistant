@@ -84,6 +84,7 @@ def create_pipeline(config):
             config.tts_provider,
             api_key=config.elevenlabs_api_key,
             voice_id=config.elevenlabs_voice_id,
+            kokoro_voice=config.kokoro_voice,
         )
         provider_name = "Kokoro (local)" if config.tts_provider == "kokoro" else "ElevenLabs"
         console.print(f"  [cyan]►[/] Preparing {provider_name} TTS... [green]✓[/]")

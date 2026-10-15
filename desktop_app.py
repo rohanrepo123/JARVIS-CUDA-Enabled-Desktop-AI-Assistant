@@ -21,11 +21,13 @@ class JarvisDesktop:
         self.root.configure(bg="#101827")
         self.pipeline = None
         self.config = None
+        self.productivity = None
+        self.reminder_scheduler = None
         self.busy = False
         self.recording = False
         self.closing = False
         self.settings_path = Path(__file__).parent / "data" / "desktop-settings.json"
-        self.settings = {"speak_voice_replies": True}
+        self.settings = {"speak_voice_replies": True, "kokoro_robotic_tone": False}
         try:
             self.settings.update(json.loads(self.settings_path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
@@ -44,6 +46,7 @@ class JarvisDesktop:
         header_row.pack(fill="x", padx=18, pady=(8, 4))
         tk.Label(header_row, text="J.A.R.V.I.S.", bg="#101827", fg="#5ee7ff",
                  font=("Segoe UI", 22, "bold")).pack(side="left")
+        ttk.Button(header_row, text="Memory", command=self._open_memory).pack(side="right", padx=(8, 0))
         ttk.Button(header_row, text="New chat", command=self._new_conversation).pack(side="right", padx=(8, 0))
         ttk.Button(header_row, text="Settings", command=self._open_settings).pack(side="right")
 
@@ -115,6 +118,14 @@ class JarvisDesktop:
             from run import create_pipeline
             from backend.app.config import JarvisConfig
             config = JarvisConfig.from_environment()
+            from backend.app.productivity import ProductivityStore
+            self.productivity = ProductivityStore(config.database_path)
+            from backend.app.productivity import ReminderScheduler
+            self.reminder_scheduler = ReminderScheduler(
+                self.productivity,
+                lambda items: self.root.after(0, self._show_due_reminders, items),
+            )
+            self.reminder_scheduler.start()
             pipeline = create_pipeline(config)
             from backend.app.voice.tts import create_tts_provider
             provider = self.settings.get("tts_provider", config.tts_provider)
@@ -123,10 +134,16 @@ class JarvisDesktop:
                     provider,
                     api_key=config.elevenlabs_api_key,
                     voice_id=config.elevenlabs_voice_id,
+                    kokoro_voice=config.kokoro_voice,
+                    kokoro_robotic_tone=self.settings["kokoro_robotic_tone"],
                 )
             except ValueError:
                 provider = "kokoro"
-                pipeline.tts = create_tts_provider(provider)
+                pipeline.tts = create_tts_provider(
+                    provider,
+                    kokoro_voice=config.kokoro_voice,
+                    kokoro_robotic_tone=self.settings["kokoro_robotic_tone"],
+                )
                 self.settings["tts_provider"] = provider
             self.pipeline = pipeline
             self.config = config
@@ -139,6 +156,214 @@ class JarvisDesktop:
         self.voice_button.configure(state="normal" if self.pipeline and self.pipeline.voice_available else "disabled")
         model = self.config.ollama_model if self.config else "Ollama"
         self.status.configure(text=f"Ready · {model} · {self._tts_provider_label()}")
+    def _show_due_reminders(self, items: list[dict]) -> None:
+        if self.closing:
+            return
+        for item in items:
+            kind = "Alarm" if item["kind"] == "alarm" else "Reminder"
+            text = item["message"]
+            self.root.bell()
+            self._append(f"JARVIS · {kind}", text)
+            popup = tk.Toplevel(self.root)
+            popup.title(f"JARVIS {kind}")
+            popup.geometry("360x160")
+            popup.transient(self.root)
+            popup.attributes("-topmost", True)
+            tk.Label(
+                popup,
+                text=f"{kind} is due",
+                font=("Segoe UI", 14, "bold"),
+                padx=18,
+                pady=14,
+            ).pack(anchor="w")
+            tk.Label(
+                popup,
+                text=text,
+                font=("Segoe UI", 11),
+                wraplength=320,
+                justify="left",
+                padx=18,
+            ).pack(anchor="w", fill="x", expand=True)
+            ttk.Button(popup, text="Dismiss", command=popup.destroy).pack(anchor="e", padx=14, pady=12)
+            popup.lift()
+            if self.settings.get("speak_voice_replies") and self.pipeline and self.pipeline.tts:
+                threading.Thread(
+                    target=self.pipeline._speak,
+                    args=(f"{kind}: {text}",),
+                    name="jarvis-reminder-audio",
+                    daemon=True,
+                ).start()
+
+    def _open_memory(self) -> None:
+        if self.productivity is None:
+            messagebox.showinfo("JARVIS memory", "Saved memory is still loading.", parent=self.root)
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("JARVIS · Memory and reminders")
+        dialog.geometry("700x480")
+        dialog.transient(self.root)
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill="both", expand=True, padx=12, pady=12)
+
+        notes_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(notes_tab, text="Notes")
+        note_search = ttk.Frame(notes_tab)
+        note_search.pack(fill="x", pady=(0, 8))
+        note_query = tk.StringVar()
+        note_query_entry = ttk.Entry(note_search, textvariable=note_query)
+        note_query_entry.pack(side="left", fill="x", expand=True)
+        note_content = ttk.Frame(notes_tab)
+        note_content.pack(fill="both", expand=True)
+        note_list = tk.Listbox(note_content, height=12, exportselection=False)
+        note_list.pack(side="left", fill="y")
+        note_body = tk.Text(note_content, wrap="word", state="disabled")
+        note_body.pack(side="left", fill="both", expand=True, padx=(10, 0))
+        note_rows: list[dict] = []
+
+        def refresh_notes() -> None:
+            note_rows[:] = self.productivity.search_notes(note_query.get(), 50)
+            note_list.delete(0, "end")
+            for note in note_rows:
+                note_list.insert("end", f"#{note['id']} · {note['title']}")
+            note_body.configure(state="normal")
+            note_body.delete("1.0", "end")
+            note_body.configure(state="disabled")
+
+        def show_note(_event=None) -> None:
+            selection = note_list.curselection()
+            if not selection:
+                return
+            note = note_rows[selection[0]]
+            note_body.configure(state="normal")
+            note_body.delete("1.0", "end")
+            note_body.insert("1.0", note["content"])
+            note_body.configure(state="disabled")
+
+        def delete_note() -> None:
+            selection = note_list.curselection()
+            if not selection:
+                return
+            note = note_rows[selection[0]]
+            if messagebox.askyesno("Delete note", f"Delete '{note['title']}'?", parent=dialog):
+                self.productivity.delete_note(note["id"])
+                refresh_notes()
+
+        note_list.bind("<<ListboxSelect>>", show_note)
+        ttk.Button(note_search, text="Search", command=refresh_notes).pack(side="right", padx=(8, 0))
+        note_query_entry.bind("<Return>", lambda _event: refresh_notes())
+        ttk.Button(notes_tab, text="Delete selected note", command=delete_note).pack(anchor="w", pady=(8, 0))
+
+        summaries_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(summaries_tab, text="Conversation summaries")
+        summary_list = tk.Listbox(summaries_tab, height=12, exportselection=False)
+        summary_list.pack(side="left", fill="y")
+        summary_body = tk.Text(summaries_tab, wrap="word", state="disabled")
+        summary_body.pack(side="left", fill="both", expand=True, padx=(10, 0))
+        summary_rows: list[dict] = []
+
+        def refresh_summaries() -> None:
+            summary_rows[:] = self.productivity.search_conversation_summaries("", 50)
+            summary_list.delete(0, "end")
+            for item in summary_rows:
+                summary_list.insert("end", f"#{item['id']} · {item['title']}")
+            summary_body.configure(state="normal")
+            summary_body.delete("1.0", "end")
+            summary_body.configure(state="disabled")
+
+        def show_summary(_event=None) -> None:
+            selection = summary_list.curselection()
+            if not selection:
+                return
+            summary = summary_rows[selection[0]]
+            summary_body.configure(state="normal")
+            summary_body.delete("1.0", "end")
+            summary_body.insert("1.0", summary["summary"])
+            summary_body.configure(state="disabled")
+
+        summary_list.bind("<<ListboxSelect>>", show_summary)
+
+        def delete_summary() -> None:
+            selection = summary_list.curselection()
+            if not selection:
+                return
+            item = summary_rows[selection[0]]
+            if messagebox.askyesno("Delete summary", f"Delete '{item['title']}'?", parent=dialog):
+                self.productivity.delete_conversation_summary(item["id"])
+                refresh_summaries()
+
+        summary_actions = ttk.Frame(summaries_tab)
+        summary_actions.pack(side="bottom", anchor="w", pady=(8, 0))
+        ttk.Button(summary_actions, text="Refresh", command=refresh_summaries).pack(side="left")
+        ttk.Button(summary_actions, text="Delete selected", command=delete_summary).pack(side="left", padx=(8, 0))
+
+        reminder_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(reminder_tab, text="Reminders and alarms")
+        reminder_list = tk.Listbox(reminder_tab, height=16, exportselection=False)
+        reminder_list.pack(fill="both", expand=True)
+        reminder_rows: list[dict] = []
+
+        def refresh_reminders() -> None:
+            reminder_rows[:] = self.productivity.list_reminders()
+            reminder_list.delete(0, "end")
+            for item in reminder_rows:
+                label = "Alarm" if item["kind"] == "alarm" else "Reminder"
+                repeat = f" · {item['recurrence']}" if item["recurrence"] != "none" else ""
+                reminder_list.insert(
+                    "end", f"#{item['id']} · {label} · {item['due_at']} · {item['message']}{repeat}"
+                )
+
+        def cancel_selected_reminder() -> None:
+            selection = reminder_list.curselection()
+            if not selection:
+                return
+            item = reminder_rows[selection[0]]
+            if messagebox.askyesno("Cancel reminder", f"Cancel '{item['message']}'?", parent=dialog):
+                self.productivity.cancel_reminder(item["id"])
+                refresh_reminders()
+
+        ttk.Button(reminder_tab, text="Cancel selected", command=cancel_selected_reminder).pack(anchor="w", pady=(8, 0))
+
+        preferences_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(preferences_tab, text="Preferences")
+        preference_list = tk.Listbox(preferences_tab, height=16, exportselection=False)
+        preference_list.pack(fill="both", expand=True)
+        preference_rows: list[dict] = []
+
+        def refresh_preferences() -> None:
+            preference_rows[:] = self.productivity.list_preferences()
+            preference_list.delete(0, "end")
+            for item in preference_rows:
+                preference_list.insert("end", f"{item['key']} = {item['value']}")
+
+        def delete_preference() -> None:
+            selection = preference_list.curselection()
+            if not selection:
+                return
+            key = preference_rows[selection[0]]["key"]
+            if messagebox.askyesno("Forget preference", f"Forget '{key}'?", parent=dialog):
+                self.productivity.delete_preference(key)
+                refresh_preferences()
+
+        ttk.Button(preferences_tab, text="Forget selected", command=delete_preference).pack(anchor="w", pady=(8, 0))
+
+        def clear_memory() -> None:
+            if messagebox.askyesno(
+                "Clear saved memory",
+                "Delete all saved notes, conversation summaries, and preferences? Reminders and alarms will remain.",
+                parent=dialog,
+            ):
+                self.productivity.clear_saved_memory()
+                refresh_notes()
+                refresh_preferences()
+
+        ttk.Button(dialog, text="Clear saved notes and preferences", command=clear_memory).pack(
+            anchor="e", padx=12, pady=(0, 12)
+        )
+        refresh_notes()
+        refresh_summaries()
+        refresh_reminders()
+        refresh_preferences()
         self._append("JARVIS", "I'm online. Type a message or hold the microphone button to speak.")
         self.entry.focus_set()
 
@@ -206,20 +431,24 @@ class JarvisDesktop:
                 self.root.after(0, self._append, "JARVIS", "I couldn't understand that. Please try again.")
                 return
             self.root.after(0, self._append, "You · voice", transcript)
-            self.root.after(0, self._start_streamed_reply)
-            self.root.after(0, lambda: self.status.configure(text="Thinking…"))
-            answer = self.pipeline.process_text_stream(
+            self.root.after(0, lambda: self.status.configure(text="Preparing a concise answer…"))
+            spoken, details = self.pipeline.process_voice_turn(
                 transcript,
-                lambda chunk: self.root.after(0, self._stream_chunk, chunk),
-                mode="voice",
+                speak=self.settings["speak_voice_replies"],
+                on_speech_started=lambda: self.root.after(
+                    0, lambda: self.status.configure(text="Preparing spoken summary…")
+                ),
             )
-            self.root.after(0, self._finish_streamed_reply, answer)
-            if self.settings["speak_voice_replies"] and self.pipeline.tts:
-                self.pipeline._speak(answer)
+            self.root.after(0, self._display_voice_reply, spoken, details)
         except Exception as exc:
             self.root.after(0, self._append, "JARVIS", f"Voice input failed: {exc}")
         finally:
             self.root.after(0, self._response_done)
+
+    def _display_voice_reply(self, spoken: str, details: str) -> None:
+        self._append("JARVIS", spoken)
+        if details.strip():
+            self._append("JARVIS · Details", details)
 
     def _response_done(self) -> None:
         if self.closing:
@@ -289,9 +518,15 @@ class JarvisDesktop:
         provider_menu.pack(anchor="w", padx=18)
         tk.Label(
             dialog,
-            text="Kokoro runs on this device and downloads its model on first use. ElevenLabs requires an API key.",
+            text="Kokoro uses its natural American English voice by default. The optional robotic effect applies only to Kokoro. ElevenLabs requires an API key.",
             bg="#101827", fg="#9aabc2", font=("Segoe UI", 9), wraplength=360, justify="left",
         ).pack(anchor="w", padx=18, pady=(5, 4))
+        robotic_var = tk.BooleanVar(value=self.settings["kokoro_robotic_tone"])
+        ttk.Checkbutton(
+            dialog,
+            text="Add a subtle robotic tone (Kokoro only)",
+            variable=robotic_var,
+        ).pack(anchor="w", padx=18, pady=(5, 2))
         speak_var = tk.BooleanVar(value=self.settings["speak_voice_replies"])
         speak_toggle = ttk.Checkbutton(dialog, text="Speak replies to voice messages",
                                        variable=speak_var, state="normal")
@@ -308,12 +543,15 @@ class JarvisDesktop:
                         provider,
                         api_key=self.config.elevenlabs_api_key,
                         voice_id=self.config.elevenlabs_voice_id,
+                        kokoro_voice=self.config.kokoro_voice,
+                        kokoro_robotic_tone=robotic_var.get(),
                     )
                 except ValueError as exc:
                     messagebox.showerror("Speech engine", str(exc), parent=dialog)
                     return
             self.settings["tts_provider"] = provider
             self.settings["speak_voice_replies"] = speak_var.get()
+            self.settings["kokoro_robotic_tone"] = robotic_var.get()
             try:
                 self.settings_path.parent.mkdir(parents=True, exist_ok=True)
                 self.settings_path.write_text(json.dumps(self.settings, indent=2), encoding="utf-8")
@@ -325,6 +563,8 @@ class JarvisDesktop:
 
     def _close(self) -> None:
         self.closing = True
+        if self.reminder_scheduler:
+            self.reminder_scheduler.stop()
         if self.pipeline:
             if self.recording:
                 try:

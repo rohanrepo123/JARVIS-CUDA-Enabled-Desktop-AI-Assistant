@@ -122,20 +122,22 @@ class ElevenLabsTTS:
 class KokoroTTS:
     """Local Kokoro text-to-speech with optional CUDA inference."""
 
-    sample_rate = 24000
+    sample_rate = 23000
     audio_format = "wav"
 
     def __init__(
         self,
         device: str = "auto",
         lang_code: str = "a",
-        voice: str = "af_heart",
+        voice: str = "am_michael",
         speed: float = 1.0,
+        robotic_tone: bool = False,
     ) -> None:
         self.device = device
         self.lang_code = lang_code
         self.voice = voice
         self.speed = speed
+        self.robotic_tone = robotic_tone
         self._pipeline: Any = None
 
     def _ensure_pipeline(self) -> Any:
@@ -164,6 +166,13 @@ class KokoroTTS:
             return b""
 
         audio = np.concatenate(chunks).astype(np.float32, copy=False)
+        if self.robotic_tone:
+            # A restrained 65 Hz ring modulation adds a synthetic, metallic edge
+            # while keeping enough of Kokoro's original signal for intelligibility.
+            sample_index = np.arange(audio.size, dtype=np.float32)
+            carrier = np.sin(sample_index * (2.0 * np.pi * 65.0 / self.sample_rate))
+            audio = audio * 0.65 + (audio * carrier) * 0.35
+
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, audio, self.sample_rate, format="WAV", subtype="PCM_16")
         return audio_buffer.getvalue()
@@ -175,10 +184,16 @@ def create_tts_provider(
     api_key: str = "",
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb",
     kokoro_device: str = "auto",
+    kokoro_voice: str = "am_michael",
+    kokoro_robotic_tone: bool = False,
 ) -> ElevenLabsTTS | KokoroTTS:
     """Create the selected TTS backend without loading local models yet."""
     if provider == "kokoro":
-        return KokoroTTS(device=kokoro_device)
+        return KokoroTTS(
+            device=kokoro_device,
+            voice=kokoro_voice,
+            robotic_tone=kokoro_robotic_tone,
+        )
     if provider == "elevenlabs":
         if not api_key or api_key == "your_elevenlabs_api_key_here":
             raise ValueError("Set ELEVENLABS_API_KEY in .env to use ElevenLabs.")

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_ollama_llm(
-    model: str = "llama3.2",
+    model: str = "qwen2.5-coder:0.5b",
     base_url: str = "http://127.0.0.1:11434",
     temperature: float = 0.4,
     num_ctx: int = 8192,
